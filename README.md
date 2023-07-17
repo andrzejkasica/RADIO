@@ -1,2 +1,2 @@
 # RADIO
-Interview task  using pthread library written in C99  
+Interview task, pthread library, C99 standard, proc/stat
