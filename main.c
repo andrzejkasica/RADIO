@@ -19,10 +19,14 @@ typedef struct{
     unsigned long iowait_stat;
     unsigned long irq_stat;
     unsigned long softirq_stat;
+    unsigned long steal_stat;
+    unsigned long guest_stat;
+    unsigned long guestnice_stat;
 }CPU_stats;
 
 
 void* Reader(void* args) {
+    //Can read choosen CPU, needs to initialize CPU_stats st[get_nprocs_conf]
     int cpu_num = get_nprocs(); 
     int cpu_num_conf = get_nprocs_conf();
     CPU_stats* st = (CPU_stats*)args;
@@ -35,13 +39,15 @@ void* Reader(void* args) {
     char cpun[255];
     int cnt = 0;
     char ch;
-    while((cnt < 0) && ((ch = getc(fp)) != EOF))
+    while((cnt < 1) && ((ch = getc(fp)) != EOF))
     {
         if (ch == '\n')
             cnt++;
     }
-    fscanf(fp, "%s %lu %lu %lu %lu %lu %lu %lu",(*st).cpu_name, &(*st).user_stat, &(*st).nice_stat, &(*st).system_stat, &(*st).idle_stat,
-            &(*st).iowait_stat, &(*st).irq_stat, &(*st).softirq_stat);
+    fscanf(fp, "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",(*st).cpu_name, 
+            &(*st).user_stat,   &(*st).nice_stat, &(*st).system_stat,  &(*st).idle_stat,
+            &(*st).iowait_stat, &(*st).irq_stat,  &(*st).softirq_stat, &(*st).steal_stat, 
+            &(*st).guest_stat,  &(*st).guestnice_stat);
     fclose(fp);
     return NULL;
 }
@@ -49,11 +55,17 @@ void* Printer(void* args) {
     CPU_stats* st = (CPU_stats*)args;
     sleep(1);
     printf("CPU_NUM: %d %d\n", get_nprocs(), get_nprocs_conf());
-    printf("CPU stats: %s %lu %lu %lu %lu %lu %lu %lu\n",(*st).cpu_name, (*st).user_stat, (*st).nice_stat, (*st).system_stat, (*st).idle_stat,
-            (*st).iowait_stat, (*st).irq_stat, (*st).softirq_stat);
+    printf("CPU stats: %s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n",(*st).cpu_name, 
+            (*st).user_stat, (*st).nice_stat, (*st).system_stat, (*st).idle_stat,
+            (*st).iowait_stat, (*st).irq_stat, (*st).softirq_stat, (*st).steal_stat, 
+            (*st).guest_stat,  (*st).guestnice_stat);
     return NULL;
 }
 void* Analyzer(void* args) {
+    CPU_stats* st = (CPU_stats*)args;
+    int previdle = 0; //prev_idle + prev iowait
+    int idle = (*st).idle_stat + (*st).iowait_stat;
+    int nonIdle = (*st).user_stat + (*st).nice_stat + (*st).system_stat + (*st).irq_stat + (*st).softirq_stat + (*st).steal_stat;
     return NULL;
 }
 void* Watchdog(void* args) {
@@ -75,7 +87,7 @@ int main() {
     if (pthread_create(&th[1], NULL, &Printer, (void*)my_st) != 0) {
          perror("Failed to create thread\n"); 
     }
-    if (pthread_create(&th[2], NULL, &Analyzer, NULL) != 0) {
+    if (pthread_create(&th[2], NULL, &Analyzer, (void*)my_st) != 0) {
          perror("Failed to create thread\n"); 
     }
     if (pthread_create(&th[3], NULL, &Watchdog, NULL) != 0) {
