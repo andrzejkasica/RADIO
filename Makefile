@@ -7,6 +7,6 @@ binaries = main
 all: main.c # otherfile.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o main main.c
 	./main
-
+	make clean
 clean:
 	rm -f $(binaries) *.o

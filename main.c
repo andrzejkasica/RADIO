@@ -6,6 +6,7 @@
 #include <semaphore.h>
 
 #define THREAD_NUM 4
+#define CPU_NUM get_nprocs()
 
 int buffer[10];
 int count = 0;
@@ -22,11 +23,21 @@ typedef struct{
 
 
 void* Reader(void* args) {
-    
+    int cpu_num = get_nprocs(); 
+    int cpu_num_conf = get_nprocs_conf();
+    CPU_stats* st = (CPU_stats*)args;
+
+    FILE *fp = fopen("/proc/stat", "r");
+    char cpun[255];
+    fscanf(fp, "%s %lu %lu %lu %lu %lu %lu %lu",cpun, &(*st).user_stat, &(*st).nice_stat, &(*st).system_stat, &(*st).idle_stat,
+            &(*st).iowait_stat, &(*st).irq_stat, &(*st).softirq_stat); 
+    fclose(fp);
     return NULL;
 }
 void* Printer(void* args) {
     CPU_stats* st = (CPU_stats*)args;
+    sleep(1);
+    printf("CPU_NUM: %d %d\n", get_nprocs(), get_nprocs_conf());
     printf("CPU stats: %lu %lu %lu %lu %lu %lu %lu\n", (*st).user_stat, (*st).nice_stat, (*st).system_stat, (*st).idle_stat,
             (*st).iowait_stat, (*st).irq_stat, (*st).softirq_stat);
     return NULL;
@@ -47,7 +58,7 @@ int main() {
     }
 
 
-    if (pthread_create(&th[0], NULL, &Reader, NULL) != 0) {
+    if (pthread_create(&th[0], NULL, &Reader,  (void*)my_st) != 0) {
          perror("Failed to create thread\n");
     }
     if (pthread_create(&th[1], NULL, &Printer, (void*)my_st) != 0) {
