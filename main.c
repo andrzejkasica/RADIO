@@ -30,7 +30,7 @@ void* Reader(void* args) {
     int cpu_num = get_nprocs(); 
     int cpu_num_conf = get_nprocs_conf();
     CPU_stats* st = (CPU_stats*)args;
-
+    while(1){
     FILE *fp = fopen("/proc/stat", "r");
     if(fp == NULL){
         perror("Unable to read /proc/stat\n");
@@ -39,7 +39,7 @@ void* Reader(void* args) {
     char cpun[255];
     int cnt = 0;
     char ch;
-    while((cnt < 1) && ((ch = getc(fp)) != EOF))
+    while((cnt < 5) && ((ch = getc(fp)) != EOF))
     {
         if (ch == '\n')
             cnt++;
@@ -49,6 +49,8 @@ void* Reader(void* args) {
             &(*st).iowait_stat, &(*st).irq_stat,  &(*st).softirq_stat, &(*st).steal_stat, 
             &(*st).guest_stat,  &(*st).guestnice_stat);
     fclose(fp);
+    sleep(1);
+    }
     return NULL;
 }
 void* Printer(void* args) {
@@ -62,10 +64,23 @@ void* Printer(void* args) {
     return NULL;
 }
 void* Analyzer(void* args) {
+    sleep(2);
     CPU_stats* st = (CPU_stats*)args;
+   while(1){
     int previdle = 0; //prev_idle + prev iowait
+    int prevnonidle = 0;
+    int prevtotal = 0;
     int idle = (*st).idle_stat + (*st).iowait_stat;
-    int nonIdle = (*st).user_stat + (*st).nice_stat + (*st).system_stat + (*st).irq_stat + (*st).softirq_stat + (*st).steal_stat;
+    int nonidle = (*st).user_stat + (*st).nice_stat + (*st).system_stat + (*st).irq_stat + (*st).softirq_stat + (*st).steal_stat;
+    int total = idle + nonidle;
+    
+    double totald = total - prevtotal;
+    double idled = idle - previdle;
+
+    double cpu_percentage = (totald - idled)/totald;
+    printf("Cpu percentage usage: %f\n", cpu_percentage);
+    sleep(1);
+   }
     return NULL;
 }
 void* Watchdog(void* args) {
