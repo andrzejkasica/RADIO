@@ -6,12 +6,12 @@
 #include <semaphore.h>
 
 #define THREAD_NUM 4
-#define CPU_NUM get_nprocs()
 
 int buffer[10];
 int count = 0;
 
 typedef struct{
+    char    cpu_name[255];
     unsigned long user_stat;
     unsigned long nice_stat;
     unsigned long system_stat;
@@ -28,9 +28,20 @@ void* Reader(void* args) {
     CPU_stats* st = (CPU_stats*)args;
 
     FILE *fp = fopen("/proc/stat", "r");
+    if(fp == NULL){
+        perror("Unable to read /proc/stat\n");
+        pthread_exit(0);
+    }
     char cpun[255];
-    fscanf(fp, "%s %lu %lu %lu %lu %lu %lu %lu",cpun, &(*st).user_stat, &(*st).nice_stat, &(*st).system_stat, &(*st).idle_stat,
-            &(*st).iowait_stat, &(*st).irq_stat, &(*st).softirq_stat); 
+    int cnt = 0;
+    char ch;
+    while((cnt < 0) && ((ch = getc(fp)) != EOF))
+    {
+        if (ch == '\n')
+            cnt++;
+    }
+    fscanf(fp, "%s %lu %lu %lu %lu %lu %lu %lu",(*st).cpu_name, &(*st).user_stat, &(*st).nice_stat, &(*st).system_stat, &(*st).idle_stat,
+            &(*st).iowait_stat, &(*st).irq_stat, &(*st).softirq_stat);
     fclose(fp);
     return NULL;
 }
@@ -38,7 +49,7 @@ void* Printer(void* args) {
     CPU_stats* st = (CPU_stats*)args;
     sleep(1);
     printf("CPU_NUM: %d %d\n", get_nprocs(), get_nprocs_conf());
-    printf("CPU stats: %lu %lu %lu %lu %lu %lu %lu\n", (*st).user_stat, (*st).nice_stat, (*st).system_stat, (*st).idle_stat,
+    printf("CPU stats: %s %lu %lu %lu %lu %lu %lu %lu\n",(*st).cpu_name, (*st).user_stat, (*st).nice_stat, (*st).system_stat, (*st).idle_stat,
             (*st).iowait_stat, (*st).irq_stat, (*st).softirq_stat);
     return NULL;
 }
