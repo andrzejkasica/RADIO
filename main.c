@@ -1,14 +1,15 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
 #include <semaphore.h>
 
 #define THREAD_NUM 4
 
-int buffer[10];
-int count = 0;
+sem_t semRead;
+sem_t semAnalyze;
 
 typedef struct{
     char    cpu_name[255];
@@ -36,14 +37,15 @@ void* Reader(void* args) {
         perror("Unable to read /proc/stat\n");
         pthread_exit(0);
     }
-    char cpun[255];
-    int cnt = 0;
+
+    int cnt = 0;    //skipping n cpus
     char ch;
     while((cnt < 5) && ((ch = getc(fp)) != EOF))
     {
         if (ch == '\n')
             cnt++;
     }
+
     fscanf(fp, "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",(*st).cpu_name, 
             &(*st).user_stat,   &(*st).nice_stat, &(*st).system_stat,  &(*st).idle_stat,
             &(*st).iowait_stat, &(*st).irq_stat,  &(*st).softirq_stat, &(*st).steal_stat, 
@@ -66,19 +68,39 @@ void* Printer(void* args) {
 void* Analyzer(void* args) {
     sleep(2);
     CPU_stats* st = (CPU_stats*)args;
-   while(1){
-    int previdle = 0; //prev_idle + prev iowait
-    int prevnonidle = 0;
-    int prevtotal = 0;
-    int idle = (*st).idle_stat + (*st).iowait_stat;
-    int nonidle = (*st).user_stat + (*st).nice_stat + (*st).system_stat + (*st).irq_stat + (*st).softirq_stat + (*st).steal_stat;
-    int total = idle + nonidle;
+    bool turn = true;
+    int usertime, nicetime = 0;
+    unsigned long long int idlealltime, systemalltime, virtualtime, totaltime = 0;
+    int usertime_t, nicetime_t = 0;
+    unsigned long long int idlealltime_t, systemalltime_t, virtualtime_t, totaltime_t = 0;
+    double cpu_percentage, totald, idled = 0.0;
     
-    double totald = total - prevtotal;
-    double idled = idle - previdle;
+    while(1){
+    if(turn)
+    {
+        usertime = (*st).user_stat - (*st).guest_stat;
+        nicetime = (*st).nice_stat - (*st).guestnice_stat;
+        idlealltime = (*st).idle_stat + (*st).iowait_stat;
+        systemalltime = (*st).system_stat + (*st).irq_stat + (*st).softirq_stat;
+        virtualtime = (*st).guest_stat + (*st).nice_stat;
+        totaltime = usertime + nicetime + systemalltime + idlealltime + (*st).steal_stat + virtualtime;
+        totald = totaltime - totaltime_t;
+        idled = idlealltime - idlealltime_t;
+        cpu_percentage = (totald - idled) / totald * 100.0;  
+    }else {
+        usertime_t = (*st).user_stat - (*st).guest_stat;
+        nicetime_t = (*st).nice_stat - (*st).guestnice_stat;
+        idlealltime_t = (*st).idle_stat + (*st).iowait_stat;
+        systemalltime_t = (*st).system_stat + (*st).irq_stat + (*st).softirq_stat;
+        virtualtime_t = (*st).guest_stat + (*st).nice_stat;
+        totaltime_t = usertime_t + nicetime_t + systemalltime_t + idlealltime_t + (*st).steal_stat + virtualtime_t;
+        totald = totaltime_t - totaltime;
+        idled = idlealltime_t - idlealltime;
+        cpu_percentage = (totald - idled) / totald * 100.0;  
+    }
 
-    double cpu_percentage = (totald - idled)/totald;
-    printf("Cpu percentage usage: %f\n", cpu_percentage);
+    turn = !turn;
+    printf("%s percentage usage: %f\n",(*st).cpu_name, cpu_percentage);
     sleep(1);
    }
     return NULL;
@@ -89,6 +111,9 @@ void* Watchdog(void* args) {
 
 int main() {
     pthread_t th[THREAD_NUM];
+    sem_init(&semRead,0,1);
+    sem_init(&semAnalyze,0,0);
+
     CPU_stats* my_st = malloc(sizeof(CPU_stats));
     if(my_st == NULL){
         perror("Memory allocation failed");
