@@ -4,23 +4,25 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <string.h>
 #include <semaphore.h>
 #include <sys/sysinfo.h>
 #include <time.h>
+#include <signal.h>
+#include <string.h>
 
 #define THREAD_NUM 4
 
 sem_t semRead;
 sem_t semAnalyze;
 sem_t semPrint;
-
 pthread_mutex_t mutexRead = PTHREAD_MUTEX_INITIALIZER;
+
+volatile sig_atomic_t done = 0;
 
 // global variable for programme termination -> watchdog Thread
 bool g_terminate = true;
 double cpu_percentage[9] = {0.0};
-float readTime;
+float readTime = 0.0;
 
 // global variables for logger
 
@@ -48,6 +50,12 @@ struct CPU_numbers
 static CPU_stats g_st[9];
 static struct CPU_numbers g_nb;
 
+void term(int signum)
+{
+    signum = signum;
+    done = 1;
+}
+
 void *Reader(void *args)
 {
     args = args;
@@ -59,14 +67,12 @@ void *Reader(void *args)
     int cnt = 0;
     char ch;
 
-    while (1)
+    while (!done)
     {
         sem_wait(&semRead);
         g_terminate = false;
         cpu_cnt = 0;
         t_start = clock();
-
-        pthread_mutex_lock(&mutexRead);
         FILE *fp = fopen("/proc/stat", "r");
         if (fp == NULL)
         {
@@ -76,12 +82,11 @@ void *Reader(void *args)
 
         while (cpu_cnt < g_nb.cpu_numb_conf + 1)
         {
-            // printf("Reader cpu counter val: %d\n", cpu_cnt);
             fscanf(fp, "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", g_st[cpu_cnt].cpu_name,
                    &g_st[cpu_cnt].user_stat, &g_st[cpu_cnt].nice_stat, &g_st[cpu_cnt].system_stat, &g_st[cpu_cnt].idle_stat,
                    &g_st[cpu_cnt].iowait_stat, &g_st[cpu_cnt].irq_stat, &g_st[cpu_cnt].softirq_stat, &g_st[cpu_cnt].steal_stat,
                    &g_st[cpu_cnt].guest_stat, &g_st[cpu_cnt].guestnice_stat);
-            while ((cnt < 1) && ((ch = getc(fp)) != EOF))
+            while ((cnt < 1) && ((ch = getc(fp)) != EOF)) // skip a line
             {
                 if (ch == '\n')
                 {
@@ -92,16 +97,14 @@ void *Reader(void *args)
             cnt = 0;
         }
         fclose(fp);
-        pthread_mutex_unlock(&mutexRead);
         sem_post(&semAnalyze);
-
         t_end = clock();
         readTime = (double)(t_end - t_start) / CLOCKS_PER_SEC;
         unsigned int timetosleep = (unsigned int)((1.0 - readTime) * 1000000);
         // printf("Reader time execution %d\n", timetosleep);
         usleep(timetosleep);
     }
-    return NULL;
+    pthread_exit(NULL);
 }
 
 void *Printer(void *args)
@@ -115,17 +118,20 @@ void *Printer(void *args)
            g_st[cnt].iowait_stat, g_st[cnt].irq_stat, g_st[cnt].softirq_stat, g_st[cnt].steal_stat,
            g_st[cnt].guest_stat, g_st[cnt].guestnice_stat);
 
-    while (1)
+    while (!done)
     {
         sem_wait(&semPrint);
+        pthread_mutex_lock(&mutexRead);
         for (cnt = 0; cnt < g_nb.cpu_numb_conf + 1; cnt++)
         {
             printf("%s perc: %f\n", g_st[cnt].cpu_name, cpu_percentage[cnt]);
         }
+        printf("Procces ID:%d\n",getpid());
+        pthread_mutex_unlock(&mutexRead);
         printf("\n");
         sem_post(&semRead);
     }
-    return NULL;
+    pthread_exit(NULL);
 }
 
 void *Analyzer(void *args)
@@ -139,7 +145,7 @@ void *Analyzer(void *args)
     double totald[cpus_total], idled[cpus_total];
 
     unsigned cnt = 0;
-    while (1)
+    while (!done)
     {
         sem_wait(&semAnalyze);
         cnt = 0;
@@ -170,13 +176,13 @@ void *Analyzer(void *args)
         turn = !turn;
         sem_post(&semPrint);
     }
-    return NULL;
+    pthread_exit(NULL);
 }
 
 void *Watchdog(void *args)
 {
     args = args;
-    while (1)
+    while (!done)
     {
         sleep(2);
         if (g_terminate)
@@ -189,11 +195,23 @@ void *Watchdog(void *args)
         }
         g_terminate = true;
     }
-    return NULL;
+    sem_destroy(&semPrint);
+    sem_destroy(&semRead);
+    sem_destroy(&semAnalyze);
+    pthread_mutex_destroy(&mutexRead);
+    exit(0);
 }
 
 int main()
 {
+    struct sigaction action;
+    memset(&action, 0, sizeof(struct sigaction));
+    action.sa_handler = term;
+    sigaction(SIGINT, &action, NULL);
+
+    memset(g_st, 0, sizeof(g_st));
+    memset(&g_nb, 0, sizeof(g_nb));
+
     pthread_t th[THREAD_NUM];
     sem_init(&semRead, 0, 1);
     sem_init(&semAnalyze, 0, 0);
@@ -226,7 +244,7 @@ int main()
             perror("Failed to join thread\n");
         }
     }
-
+    
     sem_destroy(&semPrint);
     sem_destroy(&semRead);
     sem_destroy(&semAnalyze);
