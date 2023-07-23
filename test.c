@@ -120,12 +120,12 @@ void *Printer(void *args)
     {
         sem_wait(&semPrint);
         pthread_mutex_lock(&mutexRead);
-        //int cnt = 0; // comment this line and uncomment for to print each cpu usage
-        // for (cnt = 0; cnt < g_nb.cpu_numb_conf + 1; cnt++)
+        // int cnt = 0; // comment this line and uncomment for to print each cpu usage
+        //  for (cnt = 0; cnt < g_nb.cpu_numb_conf + 1; cnt++)
         //{
-        //printf("%s perc: %f\n", g_st[cnt].cpu_name, cpu_percentage[cnt]);
-        //}
-        // printf("Procces ID:%d\n",getpid());
+        // printf("%s perc: %f\n", g_st[cnt].cpu_name, cpu_percentage[cnt]);
+        // }
+        //  printf("Procces ID:%d\n",getpid());
         pthread_mutex_unlock(&mutexRead);
         sem_post(&semRead);
     }
@@ -268,11 +268,6 @@ int main()
             perror("Failed to join thread\n");
         }
     }
-
-    // sem_destroy(&semPrint);
-    // sem_destroy(&semRead);
-    // sem_destroy(&semAnalyze);
-    // pthread_mutex_destroy(&mutexRead);
 
     return 0;
 }
