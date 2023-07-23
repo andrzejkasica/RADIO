@@ -1,5 +1,5 @@
 GCC_FLAGS = -std=c99 -Wall -Wextra
-CLANG_FLAGS = -std=c99 -Weverything
+CLANG_FLAGS = -std=c99 -Weverything -Wno-vla -Wno-self-assign
 
 #GCC_CXXFLAGS = -DMESSAGE='"Compiled with GCC"'
 #CLANG_CXXFLAGS = -DMESSAGE='"Compiled with Clang"'
@@ -14,7 +14,9 @@ else ifeq ($(CXX),clang)
 	CXXFLAGS = $(CLANG_FLAGS)
 	CXXFLAGS += $(CLANG_CXXFLAGS)
 else
-	CXXFLAGS = $(UNKNOWN_CXXFLAGS)
+	CXX = gcc
+	CXXFLAGS = $(GCC_FLAGS)
+	CXXFLAGS += $(GCC_CXXFLAGS)
 endif
 
 CXXFLAGS += -I.

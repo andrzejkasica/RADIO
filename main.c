@@ -1,9 +1,13 @@
+// defines preventing usleep warning
+#define _XOPEN_SOURCE 600
+#define _POSIX_C_SOURCE 200112L
+
+#include <unistd.h>
 #include <bits/pthreadtypes.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <unistd.h>
 #include <semaphore.h>
 #include <sys/sysinfo.h>
 #include <time.h>
@@ -12,17 +16,17 @@
 
 #define THREAD_NUM 4
 
-sem_t semRead;
-sem_t semAnalyze;
-sem_t semPrint;
-pthread_mutex_t mutexRead = PTHREAD_MUTEX_INITIALIZER;
+static sem_t semRead;
+static sem_t semAnalyze;
+static sem_t semPrint;
+static pthread_mutex_t mutexRead = PTHREAD_MUTEX_INITIALIZER;
 
-volatile sig_atomic_t done = 0;
+static volatile sig_atomic_t done = 0;
 
 // global variable for programme termination -> watchdog Thread
-bool g_terminate = true;
-double cpu_percentage[9] = {0.0};
-float readTime = 0.0;
+static bool g_terminate = true;
+static double cpu_percentage[9] = {0.0};
+static double readTime = 0.0;
 
 // global variables for logger
 
@@ -43,14 +47,14 @@ typedef struct
 
 struct CPU_numbers
 {
-    unsigned int cpu_numb;
-    unsigned int cpu_numb_conf;
+    int cpu_numb;
+    int cpu_numb_conf;
 };
 
 static CPU_stats g_st[9];
 static struct CPU_numbers g_nb;
 
-void term(int signum)
+static void term(int signum)
 {
     signum = signum;
     done = 1;
@@ -63,7 +67,7 @@ void *Reader(void *args)
     clock_t t_start;
     clock_t t_end;
     // additional variables for proc/stat line skipping
-    unsigned int cpu_cnt = 0;
+    int cpu_cnt = 0;
     int cnt = 0;
     char ch;
 
@@ -86,7 +90,7 @@ void *Reader(void *args)
                    &g_st[cpu_cnt].user_stat, &g_st[cpu_cnt].nice_stat, &g_st[cpu_cnt].system_stat, &g_st[cpu_cnt].idle_stat,
                    &g_st[cpu_cnt].iowait_stat, &g_st[cpu_cnt].irq_stat, &g_st[cpu_cnt].softirq_stat, &g_st[cpu_cnt].steal_stat,
                    &g_st[cpu_cnt].guest_stat, &g_st[cpu_cnt].guestnice_stat);
-            while ((cnt < 1) && ((ch = getc(fp)) != EOF)) // skip a line
+            while ((cnt < 1) && ((ch = (char)getc(fp)) != EOF)) // skip a line
             {
                 if (ch == '\n')
                 {
@@ -111,7 +115,7 @@ void *Printer(void *args)
 {
     args = args;
     unsigned int cnt = 0;
-    sleep(1);   //  in future some flag indicator will be added
+    sleep(1); //  in future some flag indicator will be added
     printf("CPU stats: %s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n", g_st[cnt].cpu_name,
            g_st[cnt].user_stat, g_st[cnt].nice_stat, g_st[cnt].system_stat, g_st[cnt].idle_stat,
            g_st[cnt].iowait_stat, g_st[cnt].irq_stat, g_st[cnt].softirq_stat, g_st[cnt].steal_stat,
@@ -121,12 +125,12 @@ void *Printer(void *args)
     {
         sem_wait(&semPrint);
         pthread_mutex_lock(&mutexRead);
-        int cnt = 0; //comment this line and uncomment for to print each cpu usage
-        //for (cnt = 0; cnt < g_nb.cpu_numb_conf + 1; cnt++)
+        cnt = 0; // comment this line and uncomment for to print each cpu usage
+        // for (cnt = 0; cnt < g_nb.cpu_numb_conf + 1; cnt++)
         //{
-            printf("%s perc: %f\n", g_st[cnt].cpu_name, cpu_percentage[cnt]);
+        printf("%s perc: %f\n", g_st[cnt].cpu_name, cpu_percentage[cnt]);
         //}
-        //printf("Procces ID:%d\n",getpid());
+        // printf("Procces ID:%d\n",getpid());
         pthread_mutex_unlock(&mutexRead);
         sem_post(&semRead);
     }
@@ -138,12 +142,12 @@ void *Analyzer(void *args)
     args = args;
     bool turn = true;
     // variables for cpu[0- cpus total] percentage count
-    unsigned int cpus_total = g_nb.cpu_numb + 1; // initialize with total num of cpus, count with avaivable
-    int usertime[cpus_total], nicetime[cpus_total] ;
-    unsigned long long int totaltime_t[cpus_total], idlealltime_t[cpus_total], idlealltime[cpus_total], systemalltime[cpus_total], virtualtime[cpus_total], totaltime[cpus_total];
+    int cpus_total = g_nb.cpu_numb + 1; // initialize with total num of cpus, count with avaivable
+    unsigned long usertime[cpus_total], nicetime[cpus_total];
+    unsigned long totaltime_t[cpus_total], idlealltime_t[cpus_total], idlealltime[cpus_total], systemalltime[cpus_total], virtualtime[cpus_total], totaltime[cpus_total];
     double totald[cpus_total], idled[cpus_total];
 
-    unsigned cnt = 0;
+    int cnt = 0;
     while (!done)
     {
         sem_wait(&semAnalyze);
@@ -158,16 +162,16 @@ void *Analyzer(void *args)
             {
                 idlealltime[cnt] = g_st[cnt].idle_stat + g_st[cnt].iowait_stat;
                 totaltime[cnt] = usertime[cnt] + nicetime[cnt] + systemalltime[cnt] + idlealltime[cnt] + g_st[cnt].steal_stat + virtualtime[cnt];
-                totald[cnt] = totaltime[cnt] - totaltime_t[cnt];
-                idled[cnt] = idlealltime[cnt] - idlealltime_t[cnt];
+                totald[cnt] = (double)(totaltime[cnt] - totaltime_t[cnt]);
+                idled[cnt] = (double)(idlealltime[cnt] - idlealltime_t[cnt]);
                 cpu_percentage[cnt] = (totald[cnt] - idled[cnt]) / totald[cnt] * 100.0;
             }
             else
             {
                 idlealltime_t[cnt] = g_st[cnt].idle_stat + g_st[cnt].iowait_stat;
                 totaltime_t[cnt] = usertime[cnt] + nicetime[cnt] + systemalltime[cnt] + idlealltime_t[cnt] + g_st[cnt].steal_stat + virtualtime[cnt];
-                totald[cnt] = totaltime_t[cnt] - totaltime[cnt];
-                idled[cnt] = idlealltime_t[cnt] - idlealltime[cnt];
+                totald[cnt] = (double)(totaltime_t[cnt] - totaltime[cnt]);
+                idled[cnt] = (double)(idlealltime_t[cnt] - idlealltime[cnt]);
                 cpu_percentage[cnt] = (totald[cnt] - idled[cnt]) / totald[cnt] * 100.0;
             }
             cnt++;
@@ -208,8 +212,8 @@ int main()
     action.sa_handler = term;
     sigaction(SIGINT, &action, NULL);
 
-    //memset(g_st, 0, sizeof(g_st)); //check if make diff in valgrind
-    //memset(&g_nb, 0, sizeof(g_nb));
+    // memset(g_st, 0, sizeof(g_st)); //check if make diff in valgrind
+    // memset(&g_nb, 0, sizeof(g_nb));
 
     pthread_t th[THREAD_NUM];
     sem_init(&semRead, 0, 1);
@@ -243,7 +247,7 @@ int main()
             perror("Failed to join thread\n");
         }
     }
-    
+
     // sem_destroy(&semPrint);
     // sem_destroy(&semRead);
     // sem_destroy(&semAnalyze);
