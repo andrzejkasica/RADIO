@@ -9,8 +9,9 @@
 #include <time.h>
 #include <signal.h>
 #include <string.h>
+#include <assert.h>
 
-#define THREAD_NUM 4
+#define THREAD_NUM 5
 
 sem_t semRead;
 sem_t semAnalyze;
@@ -23,8 +24,6 @@ volatile sig_atomic_t done = 0;
 bool g_terminate = true;
 double cpu_percentage[9] = {0.0};
 float readTime = 0.0;
-
-// global variables for logger
 
 typedef struct
 {
@@ -111,7 +110,7 @@ void *Printer(void *args)
 {
     args = args;
     unsigned int cnt = 0;
-    sleep(1);   //  in future some flag indicator will be added
+    sleep(1);
     printf("CPU stats: %s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu\n", g_st[cnt].cpu_name,
            g_st[cnt].user_stat, g_st[cnt].nice_stat, g_st[cnt].system_stat, g_st[cnt].idle_stat,
            g_st[cnt].iowait_stat, g_st[cnt].irq_stat, g_st[cnt].softirq_stat, g_st[cnt].steal_stat,
@@ -121,12 +120,12 @@ void *Printer(void *args)
     {
         sem_wait(&semPrint);
         pthread_mutex_lock(&mutexRead);
-        int cnt = 0; //comment this line and uncomment for to print each cpu usage
-        //for (cnt = 0; cnt < g_nb.cpu_numb_conf + 1; cnt++)
+        //int cnt = 0; // comment this line and uncomment for to print each cpu usage
+        // for (cnt = 0; cnt < g_nb.cpu_numb_conf + 1; cnt++)
         //{
-            printf("%s perc: %f\n", g_st[cnt].cpu_name, cpu_percentage[cnt]);
+        //printf("%s perc: %f\n", g_st[cnt].cpu_name, cpu_percentage[cnt]);
         //}
-        //printf("Procces ID:%d\n",getpid());
+        // printf("Procces ID:%d\n",getpid());
         pthread_mutex_unlock(&mutexRead);
         sem_post(&semRead);
     }
@@ -139,7 +138,7 @@ void *Analyzer(void *args)
     bool turn = true;
     // variables for cpu[0- cpus total] percentage count
     unsigned int cpus_total = g_nb.cpu_numb + 1; // initialize with total num of cpus, count with avaivable
-    int usertime[cpus_total], nicetime[cpus_total] ;
+    int usertime[cpus_total], nicetime[cpus_total];
     unsigned long long int totaltime_t[cpus_total], idlealltime_t[cpus_total], idlealltime[cpus_total], systemalltime[cpus_total], virtualtime[cpus_total], totaltime[cpus_total];
     double totald[cpus_total], idled[cpus_total];
 
@@ -201,6 +200,28 @@ void *Watchdog(void *args)
     exit(0);
 }
 
+void *Testth(void *args)
+{
+    args = args;
+    sleep(2);
+    int test_time = 5;
+    while (test_time > 0)
+    {
+        sleep(1);
+        test_time--;
+        assert(readTime < 1.0);
+        printf("Read time test passed\n");
+        assert(cpu_percentage[0] >= 0.0 && cpu_percentage[0] <= 100.0);
+        printf("CPU usage value correct\n");
+    }
+    printf("Tests completed succesfully\n");
+    sem_destroy(&semPrint);
+    sem_destroy(&semRead);
+    sem_destroy(&semAnalyze);
+    pthread_mutex_destroy(&mutexRead);
+    exit(0);
+}
+
 int main()
 {
     struct sigaction action;
@@ -208,8 +229,8 @@ int main()
     action.sa_handler = term;
     sigaction(SIGINT, &action, NULL);
 
-    //memset(g_st, 0, sizeof(g_st)); //check if make diff in valgrind
-    //memset(&g_nb, 0, sizeof(g_nb));
+    // memset(g_st, 0, sizeof(g_st)); //check if make diff in valgrind
+    // memset(&g_nb, 0, sizeof(g_nb));
 
     pthread_t th[THREAD_NUM];
     sem_init(&semRead, 0, 1);
@@ -235,6 +256,10 @@ int main()
     {
         perror("Failed to create thread\n");
     }
+    if (pthread_create(&th[4], NULL, &Testth, NULL) != 0)
+    {
+        perror("Failed to create thread\n");
+    }
 
     for (int i = 0; i < THREAD_NUM; i++)
     {
@@ -243,7 +268,7 @@ int main()
             perror("Failed to join thread\n");
         }
     }
-    
+
     // sem_destroy(&semPrint);
     // sem_destroy(&semRead);
     // sem_destroy(&semAnalyze);
